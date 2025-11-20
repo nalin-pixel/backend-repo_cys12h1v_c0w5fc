@@ -1,48 +1,92 @@
 """
-Database Schemas
+Database Schemas for FacilityAI (Bookings + Communications)
 
-Define your MongoDB collection schemas here using Pydantic models.
-These schemas are used for data validation in your application.
-
-Each Pydantic model represents a collection in your database.
-Model name is converted to lowercase for the collection name:
-- User -> "user" collection
-- Product -> "product" collection
-- BlogPost -> "blogs" collection
+Each Pydantic model maps to a MongoDB collection using the lowercase of the class name.
+Example: class Customer -> collection "customer"
 """
 
-from pydantic import BaseModel, Field
-from typing import Optional
+from pydantic import BaseModel, Field, EmailStr
+from typing import Optional, List, Literal
+from datetime import datetime
 
-# Example schemas (replace with your own):
+# Core entities
+class Organization(BaseModel):
+    name: str
+    industry: Optional[str] = None
+    timezone: str = Field(default="UTC")
+    currency: str = Field(default="AUD")
+    settings: dict = Field(default_factory=dict)
 
-class User(BaseModel):
-    """
-    Users collection schema
-    Collection name: "user" (lowercase of class name)
-    """
-    name: str = Field(..., description="Full name")
-    email: str = Field(..., description="Email address")
-    address: str = Field(..., description="Address")
-    age: Optional[int] = Field(None, ge=0, le=120, description="Age in years")
-    is_active: bool = Field(True, description="Whether user is active")
+class Service(BaseModel):
+    name: str
+    description: Optional[str] = None
+    duration_minutes: int = Field(ge=5, le=480)
+    price_cents: int = Field(ge=0)
+    category: Optional[str] = None
+    is_active: bool = True
 
-class Product(BaseModel):
-    """
-    Products collection schema
-    Collection name: "product" (lowercase of class name)
-    """
-    title: str = Field(..., description="Product title")
-    description: Optional[str] = Field(None, description="Product description")
-    price: float = Field(..., ge=0, description="Price in dollars")
-    category: str = Field(..., description="Product category")
-    in_stock: bool = Field(True, description="Whether product is in stock")
+class Staff(BaseModel):
+    name: str
+    email: Optional[EmailStr] = None
+    phone: Optional[str] = None
+    roles: List[str] = Field(default_factory=list)
+    services: List[str] = Field(default_factory=list, description="IDs or names of services this staff can perform")
+    timezone: Optional[str] = None
+    is_active: bool = True
 
-# Add your own schemas here:
-# --------------------------------------------------
+class Customer(BaseModel):
+    first_name: str
+    last_name: Optional[str] = None
+    email: Optional[EmailStr] = None
+    phone: Optional[str] = None
+    notes: Optional[str] = None
+    marketing_opt_in: bool = False
 
-# Note: The Flames database viewer will automatically:
-# 1. Read these schemas from GET /schema endpoint
-# 2. Use them for document validation when creating/editing
-# 3. Handle all database operations (CRUD) directly
-# 4. You don't need to create any database endpoints!
+class ScheduleSlot(BaseModel):
+    service_id: Optional[str] = None
+    staff_id: Optional[str] = None
+    start_time: datetime
+    end_time: datetime
+    capacity: int = 1
+    remaining: int = 1
+    location: Optional[str] = None
+    status: Literal["open", "held", "booked", "blocked"] = "open"
+
+class Booking(BaseModel):
+    customer_id: str
+    service_id: str
+    staff_id: Optional[str] = None
+    start_time: datetime
+    end_time: datetime
+    status: Literal["pending", "confirmed", "cancelled"] = "confirmed"
+    quantity: int = 1
+    price_cents: int = 0
+    source: Literal["phone", "web", "ai", "manual"] = "web"
+    notes: Optional[str] = None
+    schedule_slot_id: Optional[str] = None
+
+class PaymentLink(BaseModel):
+    customer_id: str
+    amount_cents: int
+    currency: str = "AUD"
+    description: Optional[str] = None
+    status: Literal["pending", "paid", "expired"] = "pending"
+    token: Optional[str] = None
+    url: Optional[str] = None
+    expires_at: Optional[datetime] = None
+
+class Transcript(BaseModel):
+    call_id: str
+    direction: Literal["inbound", "outbound"] = "inbound"
+    text: str
+    intent: Optional[str] = None
+    summary: Optional[str] = None
+
+# Minimal message log (email/SMS)
+class Message(BaseModel):
+    to: str
+    channel: Literal["sms", "email"]
+    subject: Optional[str] = None
+    body: str
+    status: Literal["queued", "sent", "failed"] = "queued"
+    meta: dict = Field(default_factory=dict)
